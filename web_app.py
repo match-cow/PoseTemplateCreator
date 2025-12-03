@@ -41,11 +41,21 @@ page_size = st.selectbox(
 st.session_state.page_size = page_size
 page_width, page_height = PAGE_SIZES[page_size]
 
+# Template name input
+template_name = st.text_input(
+    "Template Name",
+    value=st.session_state.get("template_name", ""),
+    placeholder="Enter template name for downloads",
+)
+st.session_state.template_name = template_name
+
 # Initialize session state
 if "loaded_objects" not in st.session_state:
     st.session_state.loaded_objects = []
 if "page_size" not in st.session_state:
     st.session_state.page_size = "A3"
+if "template_name" not in st.session_state:
+    st.session_state.template_name = ""
 
 # File upload
 uploaded_files = st.file_uploader(
@@ -121,21 +131,23 @@ if st.session_state.loaded_objects:
 
         col1, col2, col3 = st.columns(3)
         with col1:
-            obj["position"][0] = st.slider(
+            slider_x = st.slider(
                 f"X Position (mm) for {obj['name']}",
                 0.0,
-                float(page_width),
-                float(obj["position"][0]),
+                float(page_width - 30),
+                float(obj["position"][0] - 15),
                 key=f"x_{i}",
             )
+            obj["position"][0] = slider_x + 15
         with col2:
-            obj["position"][1] = st.slider(
+            slider_y = st.slider(
                 f"Y Position (mm) for {obj['name']}",
                 0.0,
-                float(page_height),
-                float(obj["position"][1]),
+                float(page_height - 30),
+                float(obj["position"][1] - 15),
                 key=f"y_{i}",
             )
+            obj["position"][1] = slider_y + 15
         with col3:
             obj["rotation"] = st.slider(
                 f"Rotation (deg) for {obj['name']}",
@@ -147,15 +159,67 @@ if st.session_state.loaded_objects:
 
     # Generate preview
     fig, ax = plt.subplots(figsize=(page_width / 25.4, page_height / 25.4))  # inches
+    ax.axis("off")
     ax.set_xlim(0, page_width)
     ax.set_ylim(0, page_height)
     ax.set_aspect("equal")
 
-    # Draw coordinate system
-    ax.axhline(y=0, color="black", linewidth=1)
-    ax.axvline(x=0, color="black", linewidth=1)
-    ax.text(page_width - 10, 10, "X", fontsize=12)
-    ax.text(10, page_height - 10, "Y", fontsize=12)
+    # Draw coordinate system like in PDF
+    # X axis red
+    ax.plot([15, page_width - 15], [15, 15], color="red", linewidth=1)
+    # Y axis green
+    ax.plot([15, 15], [15, page_height - 15], color="green", linewidth=1)
+    # Arrows for X
+    arrow_size = 5
+    ax.plot(
+        [page_width - 15, page_width - 15 - arrow_size],
+        [15, 15 - arrow_size / 2],
+        color="red",
+        linewidth=1,
+    )
+    ax.plot(
+        [page_width - 15, page_width - 15 - arrow_size],
+        [15, 15 + arrow_size / 2],
+        color="red",
+        linewidth=1,
+    )
+    # Arrows for Y
+    ax.plot(
+        [15, 15 - arrow_size / 2],
+        [page_height - 15, page_height - 15 - arrow_size],
+        color="green",
+        linewidth=1,
+    )
+    ax.plot(
+        [15, 15 + arrow_size / 2],
+        [page_height - 15, page_height - 15 - arrow_size],
+        color="green",
+        linewidth=1,
+    )
+    # Labels
+    ax.text(page_width - 25, 20, "X", fontsize=12, color="red")
+    ax.text(20, page_height - 25, "Y", fontsize=12, color="green")
+    ax.text(20, 20, "Z", fontsize=12, color="blue")
+    # Origin dot
+    ax.plot(15, 15, "bo", markersize=5)
+    ax.plot(15, 15, "ko", markersize=2)
+    # Ticks
+    # X ticks
+    for i in range(25, int(page_width) - 15 - 10 + 1, 10):
+        ax.plot([i, i], [15, 15 + 2], color="red", linewidth=0.5)
+    # Y ticks
+    for i in range(25, int(page_height) - 15 - 10 + 1, 10):
+        ax.plot([15, 15 + 2], [i, i], color="green", linewidth=0.5)
+    # Border
+    rect = plt.Rectangle(
+        (0, 0),
+        page_width,
+        page_height,
+        linewidth=0.5,
+        edgecolor="black",
+        facecolor="none",
+    )
+    ax.add_patch(rect)
 
     # Draw objects
     for obj in st.session_state.loaded_objects:
@@ -172,12 +236,11 @@ if st.session_state.loaded_objects:
             ]
             shifted_poly = [(p[0] + x_offset, p[1] + y_offset) for p in rotated_poly]
             ax.fill(
-                *zip(*shifted_poly), alpha=0.5, edgecolor="black", facecolor="lightgray"
+                *zip(*shifted_poly), alpha=0.3, edgecolor="black", facecolor="lightgray"
             )
         # Draw origin dot at the object's position
         ax.plot(x_offset, y_offset, "bo", markersize=5)
 
-    ax.set_title(f"{page_size} Layout Preview")
     st.pyplot(fig)
 
     # Export buttons
@@ -187,6 +250,15 @@ if st.session_state.loaded_objects:
             # Generate PDF
             buffer = io.BytesIO()
             c = canvas.Canvas(buffer, pagesize=(page_width * mm, page_height * mm))
+
+            # Add template name in top right corner with 10mm padding
+            if st.session_state.template_name:
+                c.setFillColorRGB(0, 0, 0)
+                c.drawRightString(
+                    (page_width - 10) * mm,
+                    (page_height - 10) * mm,
+                    st.session_state.template_name,
+                )
 
             # Draw objects
             for obj in st.session_state.loaded_objects:
@@ -252,11 +324,11 @@ if st.session_state.loaded_objects:
             # X ticks
             c.setStrokeColorRGB(1, 0, 0)  # red
             for i in range(25, int(page_width) - 15 - 10 + 1, 10):
-                c.line(i * mm, 15 * mm, i * mm, 15 * mm + 3 * mm)
+                c.line(i * mm, 15 * mm, i * mm, 15 * mm + 2 * mm)
             # Y ticks
             c.setStrokeColorRGB(0, 1, 0)  # green
             for i in range(25, int(page_height) - 15 - 10 + 1, 10):
-                c.line(15 * mm, i * mm, 15 * mm + 3 * mm, i * mm)
+                c.line(15 * mm, i * mm, 15 * mm + 2 * mm, i * mm)
 
             # Origin dot with Z label
             c.setFillColorRGB(0, 0, 1)  # blue
@@ -274,7 +346,12 @@ if st.session_state.loaded_objects:
 
             c.save()
             buffer.seek(0)
-            st.download_button("Download PDF", buffer, "layout.pdf", "application/pdf")
+            pdf_filename = (
+                f"{st.session_state.template_name}.pdf"
+                if st.session_state.template_name
+                else "layout.pdf"
+            )
+            st.download_button("Download PDF", buffer, pdf_filename, "application/pdf")
 
     with col2:
         if st.button("Export JSON"):
@@ -293,14 +370,19 @@ if st.session_state.loaded_objects:
                     ]
                 )
                 translation_matrix = np.eye(4)
-                translation_matrix[0, 3] = x_mm
-                translation_matrix[1, 3] = y_mm
+                translation_matrix[0, 3] = x_mm - 15
+                translation_matrix[1, 3] = y_mm - 15
                 final_matrix = translation_matrix @ rotation_matrix
                 output_data[obj["name"]] = final_matrix.tolist()
 
             json_str = json.dumps(output_data, indent=4)
+            json_filename = (
+                f"{st.session_state.template_name}.json"
+                if st.session_state.template_name
+                else "layout.json"
+            )
             st.download_button(
-                "Download JSON", json_str, "layout.json", "application/json"
+                "Download JSON", json_str, json_filename, "application/json"
             )
 
 if st.button("Clear All"):
