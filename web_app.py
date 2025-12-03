@@ -129,7 +129,7 @@ if st.session_state.loaded_objects:
     for i, obj in enumerate(st.session_state.loaded_objects):
         st.subheader(f"Object: {obj['name']}")
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
         with col1:
             slider_x = st.slider(
                 f"X Position (mm) for {obj['name']}",
@@ -156,6 +156,26 @@ if st.session_state.loaded_objects:
                 float(obj["rotation"]),
                 key=f"rot_{i}",
             )
+        with col4:
+            # Footprint preview
+            fig, ax = plt.subplots(figsize=(2, 2))
+            ax.axis("off")
+            theta = np.radians(obj.get("rotation", 0))
+            for poly in obj["polygons"]:
+                rotated_poly = [
+                    [
+                        p[0] * np.cos(theta) - p[1] * np.sin(theta),
+                        p[0] * np.sin(theta) + p[1] * np.cos(theta),
+                    ]
+                    for p in poly
+                ]
+                ax.fill(
+                    *zip(*rotated_poly),
+                    alpha=0.3,
+                    edgecolor="black",
+                    facecolor="lightgray",
+                )
+            st.pyplot(fig)
 
     # Generate preview
     fig, ax = plt.subplots(figsize=(page_width / 25.4, page_height / 25.4))  # inches
@@ -338,11 +358,6 @@ if st.session_state.loaded_objects:
             c.circle(15 * mm, 15 * mm, 0.5 * mm, fill=1)
             c.setFillColorRGB(0, 0, 1)  # blue
             c.drawString(20 * mm, 20 * mm, "Z")
-
-            # Add thin black border at page edge
-            c.setLineWidth(0.5)
-            c.setStrokeColorRGB(0, 0, 0)
-            c.rect(0, 0, page_width * mm, page_height * mm)
 
             c.save()
             buffer.seek(0)
