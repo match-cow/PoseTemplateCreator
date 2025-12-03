@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   webapp:
     image: ghcr.io/match-cow/posetemplatecreator:main

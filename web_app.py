@@ -11,6 +11,8 @@ from reportlab.lib.pagesizes import A0, A1, A2, A3, A4, landscape
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
+st.set_page_config(page_title="Pose Template Creator", page_icon="assets/match.png")
+
 # Constants
 # Use reportlab's precise page sizes converted to mm
 factor = 25.4 / 72
