@@ -1,0 +1,8 @@
+.git
+.ruff_cache
+.python-version
+README.md
+SPEC.md
+.gitignore
+main.py
+uv.lock

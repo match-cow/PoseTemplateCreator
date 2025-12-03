@@ -130,3 +130,7 @@ dmypy.json
 # Exported files
 *.pdf
 *.json
+
+object_models/
+
+.ruff_cache/
