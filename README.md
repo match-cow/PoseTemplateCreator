@@ -1,6 +1,4 @@
 # Pose Template Creator
-![Match](assets/match.png)
-
 
 A Streamlit web application for creating pose templates from 3D models.
 
@@ -26,8 +24,7 @@ This will build the image and start the container, mounting the `assets` and `ob
 ### Using Docker Directly
 
 ```bash
-docker build -t pose-template-creator .
-docker run -p 8501:8501 pose-template-creator
+docker build -t pose-template-creator . && docker run -p 8501:8501 pose-template-creator
 ```
 
 Access the app at http://localhost:8501
