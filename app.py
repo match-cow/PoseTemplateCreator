@@ -11,7 +11,13 @@ from reportlab.lib.pagesizes import A0, A1, A2, A3, A4, landscape
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
-st.set_page_config(page_title="Pose Template Creator", page_icon="assets/match.png")
+st.set_page_config(
+    page_title="Pose Template Creator", page_icon="assets/matchfavicon.png"
+)
+
+# Load custom CSS
+with open("assets/styles.css") as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # Constants
 # Use reportlab's precise page sizes converted to mm
@@ -157,25 +163,56 @@ if st.session_state.loaded_objects:
                 key=f"rot_{i}",
             )
         with col4:
-            # Footprint preview
-            fig, ax = plt.subplots(figsize=(2, 2))
-            ax.axis("off")
+            # Footprint preview - calculate bounding box for true aspect ratio
+            all_points = []
             theta = np.radians(obj.get("rotation", 0))
             for poly in obj["polygons"]:
-                rotated_poly = [
-                    [
+                for p in poly:
+                    rotated_p = [
                         p[0] * np.cos(theta) - p[1] * np.sin(theta),
                         p[0] * np.sin(theta) + p[1] * np.cos(theta),
                     ]
-                    for p in poly
-                ]
-                ax.fill(
-                    *zip(*rotated_poly),
-                    alpha=0.3,
-                    edgecolor="black",
-                    facecolor="lightgray",
-                )
-            st.pyplot(fig)
+                    all_points.append(rotated_p)
+
+            if all_points:
+                all_points = np.array(all_points)
+                min_x, max_x = all_points[:, 0].min(), all_points[:, 0].max()
+                min_y, max_y = all_points[:, 1].min(), all_points[:, 1].max()
+                width = max_x - min_x
+                height = max_y - min_y
+
+                # Set figure size based on aspect ratio, with a max size of 2 inches
+                max_dim = max(width, height)
+                if max_dim > 0:
+                    fig_width = 2 * (width / max_dim)
+                    fig_height = 2 * (height / max_dim)
+                else:
+                    fig_width = fig_height = 2
+
+                fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+                ax.set_aspect("equal")
+                ax.axis("off")
+
+                # Set limits with small padding
+                padding = max(width, height) * 0.1 if max(width, height) > 0 else 1
+                ax.set_xlim(min_x - padding, max_x + padding)
+                ax.set_ylim(min_y - padding, max_y + padding)
+
+                for poly in obj["polygons"]:
+                    rotated_poly = [
+                        [
+                            p[0] * np.cos(theta) - p[1] * np.sin(theta),
+                            p[0] * np.sin(theta) + p[1] * np.cos(theta),
+                        ]
+                        for p in poly
+                    ]
+                    ax.fill(
+                        *zip(*rotated_poly),
+                        alpha=0.3,
+                        edgecolor="black",
+                        facecolor="lightgray",
+                    )
+                st.pyplot(fig)
 
     # Generate preview
     fig, ax = plt.subplots(figsize=(page_width / 25.4, page_height / 25.4))  # inches
@@ -263,143 +300,161 @@ if st.session_state.loaded_objects:
 
     st.pyplot(fig)
 
-    # Export buttons
+    # Helper functions for export
+    def generate_pdf():
+        """Generate PDF bytes for download."""
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=(page_width * mm, page_height * mm))
+
+        # Add template name in top right corner with 10mm padding
+        if st.session_state.template_name:
+            c.setFillColorRGB(0, 0, 0)
+            c.drawRightString(
+                (page_width - 10) * mm,
+                (page_height - 10) * mm,
+                st.session_state.template_name,
+            )
+
+        # Draw objects
+        for obj in st.session_state.loaded_objects:
+            x_offset, y_offset = obj["position"]
+            theta = np.radians(obj.get("rotation", 0))
+            for poly in obj["polygons"]:
+                rotated_poly = [
+                    [
+                        p[0] * np.cos(theta) - p[1] * np.sin(theta),
+                        p[0] * np.sin(theta) + p[1] * np.cos(theta),
+                    ]
+                    for p in poly
+                ]
+                shifted_poly = [
+                    (p[0] + x_offset, p[1] + y_offset) for p in rotated_poly
+                ]
+                if shifted_poly:
+                    c.setFillColorRGB(0.8, 0.8, 0.8, 0.5)
+                    c.setStrokeColorRGB(0, 0, 0)
+                    path = c.beginPath()
+                    path.moveTo(shifted_poly[0][0] * mm, shifted_poly[0][1] * mm)
+                    for p in shifted_poly[1:]:
+                        path.lineTo(p[0] * mm, p[1] * mm)
+                    path.close()
+                    c.drawPath(path, fill=1, stroke=1)
+
+            # Draw origin dot at the object's position
+            c.setFillColorRGB(0, 0, 1)  # blue
+            c.circle(x_offset * mm, y_offset * mm, 2 * mm, fill=1)
+            c.setFillColorRGB(0, 0, 0)  # black
+            c.circle(x_offset * mm, y_offset * mm, 0.5 * mm, fill=1)
+
+        # Draw coordinate system (with 15mm padding)
+        c.setLineWidth(1)  # Thinner
+        # X axis red
+        c.setStrokeColorRGB(1, 0, 0)
+        x_start_x = 15 * mm
+        x_start_y = 15 * mm
+        x_end_x = (page_width - 15) * mm
+        x_end_y = 15 * mm
+        c.line(x_start_x, x_start_y, x_end_x, x_end_y)
+        # Arrow for x
+        arrow_size = 5 * mm
+        c.line(x_end_x, x_end_y, x_end_x - arrow_size, x_end_y - arrow_size / 2)
+        c.line(x_end_x, x_end_y, x_end_x - arrow_size, x_end_y + arrow_size / 2)
+        # Y axis green
+        c.setStrokeColorRGB(0, 1, 0)
+        y_start_x = 15 * mm
+        y_start_y = 15 * mm
+        y_end_x = 15 * mm
+        y_end_y = (page_height - 15) * mm
+        c.line(y_start_x, y_start_y, y_end_x, y_end_y)
+        # Arrow for y
+        c.line(y_end_x, y_end_y, y_end_x - arrow_size / 2, y_end_y - arrow_size)
+        c.line(y_end_x, y_end_y, y_end_x + arrow_size / 2, y_end_y - arrow_size)
+        # Labels
+        c.setFillColorRGB(1, 0, 0)
+        c.drawString((page_width - 25) * mm, 20 * mm, "X")
+        c.setFillColorRGB(0, 1, 0)
+        c.drawString(20 * mm, (page_height - 25) * mm, "Y")
+        # Ticks every 10mm
+        c.setLineWidth(0.5)
+        # X ticks
+        c.setStrokeColorRGB(1, 0, 0)  # red
+        for i in range(25, int(page_width) - 15 - 10 + 1, 10):
+            c.line(i * mm, 15 * mm, i * mm, 15 * mm + 2 * mm)
+        # Y ticks
+        c.setStrokeColorRGB(0, 1, 0)  # green
+        for i in range(25, int(page_height) - 15 - 10 + 1, 10):
+            c.line(15 * mm, i * mm, 15 * mm + 2 * mm, i * mm)
+
+        # Origin dot with Z label
+        c.setFillColorRGB(0, 0, 1)  # blue
+        c.setStrokeColorRGB(0, 0, 0)  # black border
+        c.circle(15 * mm, 15 * mm, 2 * mm, fill=1, stroke=1)
+        c.setFillColorRGB(0, 0, 0)  # black
+        c.circle(15 * mm, 15 * mm, 0.5 * mm, fill=1)
+        c.setFillColorRGB(0, 0, 1)  # blue
+        c.drawString(20 * mm, 20 * mm, "Z")
+
+        c.save()
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    def generate_json():
+        """Generate JSON string for download."""
+        output_data = {}
+        for obj in st.session_state.loaded_objects:
+            x_mm, y_mm = obj["position"]
+            theta = np.radians(obj.get("rotation", 0))
+            cos_t = np.cos(theta)
+            sin_t = np.sin(theta)
+            rotation_matrix = np.array(
+                [
+                    [cos_t, -sin_t, 0, 0],
+                    [sin_t, cos_t, 0, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 0, 1],
+                ]
+            )
+            translation_matrix = np.eye(4)
+            translation_matrix[0, 3] = x_mm - 15
+            translation_matrix[1, 3] = y_mm - 15
+            final_matrix = translation_matrix @ rotation_matrix
+            output_data[obj["name"]] = final_matrix.tolist()
+
+        return json.dumps(output_data, indent=4)
+
+    # Export buttons - direct download on click
+    pdf_filename = (
+        f"{st.session_state.template_name}.pdf"
+        if st.session_state.template_name
+        else "layout.pdf"
+    )
+    json_filename = (
+        f"{st.session_state.template_name}.json"
+        if st.session_state.template_name
+        else "layout.json"
+    )
+
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Export PDF"):
-            # Generate PDF
-            buffer = io.BytesIO()
-            c = canvas.Canvas(buffer, pagesize=(page_width * mm, page_height * mm))
-
-            # Add template name in top right corner with 10mm padding
-            if st.session_state.template_name:
-                c.setFillColorRGB(0, 0, 0)
-                c.drawRightString(
-                    (page_width - 10) * mm,
-                    (page_height - 10) * mm,
-                    st.session_state.template_name,
-                )
-
-            # Draw objects
-            for obj in st.session_state.loaded_objects:
-                x_offset, y_offset = obj["position"]
-                theta = np.radians(obj.get("rotation", 0))
-                for poly in obj["polygons"]:
-                    rotated_poly = [
-                        [
-                            p[0] * np.cos(theta) - p[1] * np.sin(theta),
-                            p[0] * np.sin(theta) + p[1] * np.cos(theta),
-                        ]
-                        for p in poly
-                    ]
-                    shifted_poly = [
-                        (p[0] + x_offset, p[1] + y_offset) for p in rotated_poly
-                    ]
-                    if shifted_poly:
-                        c.setFillColorRGB(0.8, 0.8, 0.8, 0.5)
-                        c.setStrokeColorRGB(0, 0, 0)
-                        path = c.beginPath()
-                        path.moveTo(shifted_poly[0][0] * mm, shifted_poly[0][1] * mm)
-                        for p in shifted_poly[1:]:
-                            path.lineTo(p[0] * mm, p[1] * mm)
-                        path.close()
-                        c.drawPath(path, fill=1, stroke=1)
-
-                # Draw origin dot at the object's position
-                c.setFillColorRGB(0, 0, 1)  # blue
-                c.circle(x_offset * mm, y_offset * mm, 2 * mm, fill=1)
-                c.setFillColorRGB(0, 0, 0)  # black
-                c.circle(x_offset * mm, y_offset * mm, 0.5 * mm, fill=1)
-
-            # Draw coordinate system (with 15mm padding)
-            c.setLineWidth(1)  # Thinner
-            # X axis red
-            c.setStrokeColorRGB(1, 0, 0)
-            x_start_x = 15 * mm
-            x_start_y = 15 * mm
-            x_end_x = (page_width - 15) * mm
-            x_end_y = 15 * mm
-            c.line(x_start_x, x_start_y, x_end_x, x_end_y)
-            # Arrow for x
-            arrow_size = 5 * mm
-            c.line(x_end_x, x_end_y, x_end_x - arrow_size, x_end_y - arrow_size / 2)
-            c.line(x_end_x, x_end_y, x_end_x - arrow_size, x_end_y + arrow_size / 2)
-            # Y axis green
-            c.setStrokeColorRGB(0, 1, 0)
-            y_start_x = 15 * mm
-            y_start_y = 15 * mm
-            y_end_x = 15 * mm
-            y_end_y = (page_height - 15) * mm
-            c.line(y_start_x, y_start_y, y_end_x, y_end_y)
-            # Arrow for y
-            c.line(y_end_x, y_end_y, y_end_x - arrow_size / 2, y_end_y - arrow_size)
-            c.line(y_end_x, y_end_y, y_end_x + arrow_size / 2, y_end_y - arrow_size)
-            # Labels
-            c.setFillColorRGB(1, 0, 0)
-            c.drawString((page_width - 25) * mm, 20 * mm, "X")
-            c.setFillColorRGB(0, 1, 0)
-            c.drawString(20 * mm, (page_height - 25) * mm, "Y")
-            # Ticks every 10mm
-            c.setLineWidth(0.5)
-            # X ticks
-            c.setStrokeColorRGB(1, 0, 0)  # red
-            for i in range(25, int(page_width) - 15 - 10 + 1, 10):
-                c.line(i * mm, 15 * mm, i * mm, 15 * mm + 2 * mm)
-            # Y ticks
-            c.setStrokeColorRGB(0, 1, 0)  # green
-            for i in range(25, int(page_height) - 15 - 10 + 1, 10):
-                c.line(15 * mm, i * mm, 15 * mm + 2 * mm, i * mm)
-
-            # Origin dot with Z label
-            c.setFillColorRGB(0, 0, 1)  # blue
-            c.setStrokeColorRGB(0, 0, 0)  # black border
-            c.circle(15 * mm, 15 * mm, 2 * mm, fill=1, stroke=1)
-            c.setFillColorRGB(0, 0, 0)  # black
-            c.circle(15 * mm, 15 * mm, 0.5 * mm, fill=1)
-            c.setFillColorRGB(0, 0, 1)  # blue
-            c.drawString(20 * mm, 20 * mm, "Z")
-
-            c.save()
-            buffer.seek(0)
-            pdf_filename = (
-                f"{st.session_state.template_name}.pdf"
-                if st.session_state.template_name
-                else "layout.pdf"
-            )
-            st.download_button("Download PDF", buffer, pdf_filename, "application/pdf")
-
+        st.download_button(
+            "Export PDF",
+            data=generate_pdf(),
+            file_name=pdf_filename,
+            mime="application/pdf",
+            type="primary",
+        )
     with col2:
-        if st.button("Export JSON"):
-            output_data = {}
-            for obj in st.session_state.loaded_objects:
-                x_mm, y_mm = obj["position"]
-                theta = np.radians(obj.get("rotation", 0))
-                cos_t = np.cos(theta)
-                sin_t = np.sin(theta)
-                rotation_matrix = np.array(
-                    [
-                        [cos_t, -sin_t, 0, 0],
-                        [sin_t, cos_t, 0, 0],
-                        [0, 0, 1, 0],
-                        [0, 0, 0, 1],
-                    ]
-                )
-                translation_matrix = np.eye(4)
-                translation_matrix[0, 3] = x_mm - 15
-                translation_matrix[1, 3] = y_mm - 15
-                final_matrix = translation_matrix @ rotation_matrix
-                output_data[obj["name"]] = final_matrix.tolist()
+        st.download_button(
+            "Export JSON",
+            data=generate_json(),
+            file_name=json_filename,
+            mime="application/json",
+            type="primary",
+        )
 
-            json_str = json.dumps(output_data, indent=4)
-            json_filename = (
-                f"{st.session_state.template_name}.json"
-                if st.session_state.template_name
-                else "layout.json"
-            )
-            st.download_button(
-                "Download JSON", json_str, json_filename, "application/json"
-            )
-
+# Clear All button with red styling
+st.markdown('<div class="red-button">', unsafe_allow_html=True)
 if st.button("Clear All"):
     st.session_state.loaded_objects = []
     st.rerun()
+st.markdown("</div>", unsafe_allow_html=True)

@@ -1,0 +1,14 @@
+/* Remove rounded corners from images */
+img {
+    border-radius: 0 !important;
+}
+
+/* Red button styling for Clear All */
+.red-button .stButton button {
+    background-color: rgb(203, 33, 33) !important;
+    color: white !important;
+    border: none !important;
+}
+.red-button .stButton button:hover {
+    background-color: rgb(180, 30, 30) !important;
+}

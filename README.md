@@ -4,11 +4,9 @@ A Streamlit web application for creating pose templates from 3D models.
 
 ## Running Locally
 
-Ensure you have Python 3.12+ and uv installed.
-
 ```bash
 uv sync
-uv run streamlit run web_app.py
+uv run streamlit run app.py
 ```
 
 ## Running with Docker
@@ -24,7 +22,7 @@ This will build the image and start the container, mounting the `assets` and `ob
 ### Using Docker Directly
 
 ```bash
-docker build -t pose-template-creator . && docker run -p 8501:8501 pose-template-creator
+docker build -t pose-template-creator . && docker run -p 8502:8502 pose-template-creator
 ```
 
-Access the app at http://localhost:8501
+Access the app at http://localhost:8502
