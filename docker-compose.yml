@@ -1,5 +1,6 @@
 services:
   posetemplatecreator:
+    container_name: posetemplatecreator
     image: ghcr.io/match-cow/posetemplatecreator:main
     ports:
       - "8502:8502"

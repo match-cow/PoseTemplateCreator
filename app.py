@@ -32,11 +32,11 @@ PAGE_SIZES = {
 SCALE_FACTOR = 5  # For display, but we'll use mm directly
 
 # Title with logo on the right
-col1, col2 = st.columns([4, 1])
+col1, col2 = st.columns([8, 2])
 with col1:
     st.title("Pose Template Creator")
 with col2:
-    st.image("assets/match.png", width=80)
+    st.image("assets/match.png", width=200)
 
 # Page size selection
 page_size = st.selectbox(
